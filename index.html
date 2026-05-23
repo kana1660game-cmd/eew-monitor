@@ -5737,9 +5737,23 @@ function submitDebug() {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 
-            let eqAdded = 0;
+            let eewAdded = 0;
+            let eqAdded  = 0;
 
-            // ── 地震情報履歴マージ（EEW は同期しない）───────────────
+            // ── EEW速報履歴マージ ──────────────────────────────────
+            if (Array.isArray(data.eew) && data.eew.length > 0) {
+                const existKeys = new Set(historyData.map(d => d.SortKey).filter(Boolean));
+                const newItems = data.eew.filter(d => d.SortKey && !existKeys.has(d.SortKey));
+                if (newItems.length > 0) {
+                    historyData.push(...newItems);
+                    historyData.sort((a, b) => (b.SortKey || '').localeCompare(a.SortKey || ''));
+                    eewAdded = newItems.length;
+                    saveEewHistoryLocal();
+                    renderHistory();
+                }
+            }
+
+            // ── 地震情報履歴マージ ──────────────────────────────────
             if (Array.isArray(data.eq) && data.eq.length > 0) {
                 const existIds = new Set(eqHistoryData.map(d => d.id).filter(Boolean));
                 const items = data.eq.filter(d => d.id && !existIds.has(d.id));
@@ -5755,10 +5769,11 @@ function submitDebug() {
                 }
             }
 
-            const eqTotal = Array.isArray(data.eq) ? data.eq.length : 0;
-            setSyncStatus(`同期済 EQ:${eqTotal}`, '#28a745');
+            const eewTotal = Array.isArray(data.eew) ? data.eew.length : 0;
+            const eqTotal  = Array.isArray(data.eq)  ? data.eq.length  : 0;
+            setSyncStatus(`同期済 EEW:${eewTotal} EQ:${eqTotal}`, '#28a745');
             setLastSyncTime();
-            if (eqAdded) console.log(`[Sync] 完了 +EQ:${eqAdded}`);
+            if (eewAdded || eqAdded) console.log(`[Sync] 完了 +EEW:${eewAdded} +EQ:${eqAdded}`);
         } catch (e) {
             setSyncStatus('Electron未起動', '#6c757d');
             console.debug('[Sync] Electron未起動またはタイムアウト:', e.message);
