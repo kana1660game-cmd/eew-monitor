@@ -742,6 +742,33 @@
             #update-time { display: none !important; }
             .container { padding-bottom: 30px !important; }
         }
+    /* ── 同期ログパネル ── */
+    #g-log-panel {
+        display: none;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        height: 180px;
+        background: #0a0c14;
+        border-top: 2px solid #334;
+        z-index: 9000;
+        font-family: monospace;
+        font-size: 0.72em;
+    }
+    #g-log-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 10px;
+        border-bottom: 1px solid #223;
+        background: #0d101c;
+    }
+    #g-log-body {
+        height: calc(180px - 28px);
+        overflow-y: auto;
+        padding: 4px 10px;
+        scrollbar-width: thin;
+    }
+    #g-log-body div { line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -773,6 +800,7 @@
             <span>最新の速報内容</span>
             <span id="sync-status" style="font-size:0.82em;padding:2px 9px;border-radius:4px;background:#6c757d;color:#fff;margin-left:auto;white-space:nowrap;">同期待機中</span>
             <span id="update-time" style="color:#666; font-size:0.82em; font-weight:normal; white-space:nowrap; margin-left:8px;">最終同期: --:--:--</span>
+            <button id="g-log-btn" onclick="toggleGLog()" style="font-size:0.78em;padding:1px 7px;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;cursor:pointer;white-space:nowrap;margin-left:4px;">📋 ログ</button>
         </div>
         <div id="info-text">閲覧モード（Electronアプリと同期中...）</div>
     </div>
@@ -5705,6 +5733,57 @@ function submitDebug() {
 </script>
 
 
+<!-- 同期ログエンジン -->
+<script>
+(function () {
+    'use strict';
+    const G_LOG_MAX = 300;
+    const _gLogLines = [];
+    window._gLogLines = _gLogLines;
+
+    function _pad(n) { return String(n).padStart(2, '0'); }
+
+    window.gLog = function (cls, msg) {
+        const now = new Date();
+        const t = `${_pad(now.getHours())}:${_pad(now.getMinutes())}:${_pad(now.getSeconds())}`;
+        _gLogLines.push({ t, cls, msg: String(msg) });
+        if (_gLogLines.length > G_LOG_MAX) _gLogLines.shift();
+        const cnt = document.getElementById('g-log-count');
+        if (cnt) cnt.textContent = `${_gLogLines.length}行`;
+        const body = document.getElementById('g-log-body');
+        if (!body || body.closest('#g-log-panel').style.display === 'none') return;
+        _gLogAppendLine(body, _gLogLines[_gLogLines.length - 1]);
+        body.scrollTop = body.scrollHeight;
+    };
+
+    function _gLogAppendLine(body, e) {
+        const colors = { ok: '#28a745', warn: '#ffc107', error: '#dc3545', info: '#7a8a9a' };
+        const d = document.createElement('div');
+        d.innerHTML = `<span style="color:#445;margin-right:5px">${e.t}</span><span style="color:${colors[e.cls] || '#aab'}">${e.msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+        body.appendChild(d);
+        while (body.children.length > G_LOG_MAX) body.removeChild(body.firstChild);
+    }
+
+    function _gLogRenderAll() {
+        const body = document.getElementById('g-log-body');
+        if (!body) return;
+        body.innerHTML = '';
+        _gLogLines.forEach(e => _gLogAppendLine(body, e));
+        body.scrollTop = body.scrollHeight;
+    }
+
+    window.toggleGLog = function () {
+        const panel = document.getElementById('g-log-panel');
+        if (!panel) return;
+        const visible = panel.style.display !== 'none' && panel.style.display !== '';
+        panel.style.display = visible ? 'none' : 'block';
+        const btn = document.getElementById('g-log-btn');
+        if (btn) btn.textContent = visible ? '📋 ログ' : '📋 ログ非表示';
+        if (!visible) _gLogRenderAll();
+    };
+})();
+</script>
+
 <!-- ════════════════════════════════════════════
      🔗 localhost:18880 同期（定期ポーリング + SSE イベント push）
 ════════════════════════════════════════════ -->
@@ -5732,6 +5811,7 @@ function submitDebug() {
 
     async function doSync() {
         setSyncStatus('同期中...', '#ffc107');
+        gLog('info', '[Sync] 同期開始...');
         try {
             const res = await fetch(HISTORY_URL, { signal: AbortSignal.timeout(5000) });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -5773,23 +5853,27 @@ function submitDebug() {
             const eqTotal  = Array.isArray(data.eq)  ? data.eq.length  : 0;
             setSyncStatus(`同期済 EEW:${eewTotal} EQ:${eqTotal}`, '#28a745');
             setLastSyncTime();
-            if (eewAdded || eqAdded) console.log(`[Sync] 完了 +EEW:${eewAdded} +EQ:${eqAdded}`);
+            const summary = `EEW:${eewTotal}件 EQ:${eqTotal}件 (+EEW:${eewAdded} +EQ:${eqAdded})`;
+            gLog(eewAdded || eqAdded ? 'ok' : 'info', `[Sync] 完了 ${summary}`);
         } catch (e) {
             setSyncStatus('Electron未起動', '#6c757d');
+            gLog('warn', `[Sync] 失敗 → ${e.message}`);
             console.debug('[Sync] Electron未起動またはタイムアウト:', e.message);
         }
     }
 
     // SSE: Electron からのイベント push を受信して即時同期
     function connectSSE() {
+        gLog('info', '[SSE] Electronへ接続試行...');
         const es = new EventSource(EVENTS_URL);
         es.addEventListener('sync', () => {
-            console.debug('[Sync] SSE push 受信 → 即時同期');
+            gLog('info', '[SSE] イベント受信 → 即時同期');
             doSync();
         });
         es.onerror = () => {
+            gLog('warn', '[SSE] 接続エラー → 10秒後に再接続');
             es.close();
-            setTimeout(connectSSE, 10000); // 10 秒後に再接続
+            setTimeout(connectSSE, 10000);
         };
     }
 
@@ -5872,5 +5956,15 @@ function submitDebug() {
 })();
 </script>
 
+<!-- 同期ログパネル -->
+<div id="g-log-panel">
+    <div id="g-log-header">
+        <span style="color:#556;flex:1;">▸ SYNC LOG</span>
+        <span id="g-log-count" style="color:#445;">0行</span>
+        <button onclick="document.getElementById('g-log-body').innerHTML='';_gLogLines.length=0;document.getElementById('g-log-count').textContent='0行';" style="font-size:0.9em;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;padding:1px 6px;cursor:pointer;">CLR</button>
+        <button onclick="toggleGLog()" style="font-size:0.9em;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;padding:1px 6px;cursor:pointer;">✕</button>
+    </div>
+    <div id="g-log-body"></div>
+</div>
 </body>
 </html>
