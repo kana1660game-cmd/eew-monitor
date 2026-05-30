@@ -327,7 +327,7 @@
             display: inline-block; margin-left: 10px; padding: 2px 6px; border-radius: 4px;
             font-size: 0.85em; font-weight: bold; background: #d4edda; color: #155724; border: 1px solid #c3e6cb;
         }
-        /* モーダル表示中は背景スクロール禁止 */
+        /* モーダル表示中は背景スクロール禁止（top は JS で動的にセット） */
         body.modal-open { overflow: hidden !important; position: fixed; width: 100%; }
 
         .filter-row { display: flex; align-items: center; margin-bottom: 12px; font-size: 0.9em; flex-wrap: wrap; }
@@ -1468,7 +1468,7 @@
 <div id="debug-modal" class="modal-overlay">
     <div class="modal-content" style="width: 380px;">
         <h3 style="margin-top:0;">デバッグデータ入力</h3>
-        <div style="margin-bottom: 10px; display: flexle="margin-bottom: 10px; display: flex; justify-content: space-between;"><label>発表時刻:</label><input type="text" id="dbg-ann" placeholder="yyyy/MM/dd HH:mm:ss" style="width:180px;"></div>
+        <div style="margin-bottom: 10px; display: flex; justify-content: space-between;"><label>発表時刻:</label><input type="text" id="dbg-ann" placeholder="yyyy/MM/dd HH:mm:ss" style="width:180px;"></div>
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between;"><label>報数(数字):</label><input type="number" id="dbg-serial" value="1" style="width:180px;"></div>
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between;"><label>最終報:</label><input type="checkbox" id="dbg-final" style="width:180px;"></div>
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between;"><label>予想震度:</label>
@@ -2230,10 +2230,21 @@
 
         // モーダル開閉に連動して背景スクロールをロック/アンロック
         (function setupScrollLock() {
+            let savedScrollY = 0;
             const check = () => {
                 const anyOpen = Array.from(document.querySelectorAll('.modal-overlay'))
                     .some(el => el.style.display === 'flex');
-                document.body.classList.toggle('modal-open', anyOpen);
+                if (anyOpen && !document.body.classList.contains('modal-open')) {
+                    // モーダルを開く: スクロール位置を保存し body を固定
+                    savedScrollY = window.scrollY;
+                    document.body.style.top = `-${savedScrollY}px`;
+                    document.body.classList.add('modal-open');
+                } else if (!anyOpen && document.body.classList.contains('modal-open')) {
+                    // モーダルを閉じる: body の固定を解除してスクロール位置を復元
+                    document.body.classList.remove('modal-open');
+                    document.body.style.top = '';
+                    window.scrollTo(0, savedScrollY);
+                }
             };
             document.querySelectorAll('.modal-overlay').forEach(el => {
                 new MutationObserver(check).observe(el, { attributes: true, attributeFilter: ['style'] });
@@ -6135,4 +6146,7 @@ function submitDebug() {
         <button onclick="document.getElementById('g-log-body').innerHTML='';_gLogLines.length=0;document.getElementById('g-log-count').textContent='0行';" style="font-size:0.9em;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;padding:1px 6px;cursor:pointer;">CLR</button>
         <button onclick="toggleGLog()" style="font-size:0.9em;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;padding:1px 6px;cursor:pointer;">✕</button>
     </div>
-    <div id="g-log-bo
+    <div id="g-log-body"></div>
+</div>
+</body>
+</html>
