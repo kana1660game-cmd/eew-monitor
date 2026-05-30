@@ -327,8 +327,8 @@
             display: inline-block; margin-left: 10px; padding: 2px 6px; border-radius: 4px;
             font-size: 0.85em; font-weight: bold; background: #d4edda; color: #155724; border: 1px solid #c3e6cb;
         }
-        /* モーダル表示中は背景スクロール禁止（top は JS で動的にセット） */
-        body.modal-open { overflow: hidden !important; position: fixed; width: 100%; }
+        /* モーダル表示中は背景スクロール禁止 */
+        body.modal-open { overflow: hidden !important; }
 
         .filter-row { display: flex; align-items: center; margin-bottom: 12px; font-size: 0.9em; flex-wrap: wrap; }
         .filter-label { font-weight: bold; width: 130px; flex-shrink: 0; }
@@ -2230,20 +2230,25 @@
 
         // モーダル開閉に連動して背景スクロールをロック/アンロック
         (function setupScrollLock() {
-            let savedScrollY = 0;
+            // モーダルコンテンツ内のスクロールは通す、背景のみ禁止
+            function preventBgTouch(e) {
+                if (!e.target.closest('.modal-content, .table-scroll, .eew-filter-content, .eq-filter-content')) {
+                    e.preventDefault();
+                }
+            }
+            let locked = false;
             const check = () => {
                 const anyOpen = Array.from(document.querySelectorAll('.modal-overlay'))
                     .some(el => el.style.display === 'flex');
-                if (anyOpen && !document.body.classList.contains('modal-open')) {
-                    // モーダルを開く: スクロール位置を保存し body を固定
-                    savedScrollY = window.scrollY;
-                    document.body.style.top = `-${savedScrollY}px`;
+                if (anyOpen && !locked) {
+                    locked = true;
                     document.body.classList.add('modal-open');
-                } else if (!anyOpen && document.body.classList.contains('modal-open')) {
-                    // モーダルを閉じる: body の固定を解除してスクロール位置を復元
+                    // iOS Safari 向け: touchmove で背景スクロールを阻止
+                    document.addEventListener('touchmove', preventBgTouch, { passive: false });
+                } else if (!anyOpen && locked) {
+                    locked = false;
                     document.body.classList.remove('modal-open');
-                    document.body.style.top = '';
-                    window.scrollTo(0, savedScrollY);
+                    document.removeEventListener('touchmove', preventBgTouch);
                 }
             };
             document.querySelectorAll('.modal-overlay').forEach(el => {
