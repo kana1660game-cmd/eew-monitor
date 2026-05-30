@@ -2895,14 +2895,16 @@ function _idbGetAllCursor(store) {
     function _parseEqTime(t) {
         if (!t) return new Date(NaN);
         const s = String(t).trim();
-        // "YYYY/MM/DD HH:MM:SS" または "YYYY/MM/DD HH:MM:SS." 形式
-        const m = s.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\.?$/);
+        // "YYYY/MM/DD HH:MM[:SS][.mmm]" 形式（秒・ミリ秒は省略可）
+        // ※ iOS Safariはスラッシュ区切り＋小数秒の "2026/05/30 08:29:05.448" を
+        //   Invalid Date として弾くため、必ずダッシュ＋T のISO文字列に変換する
+        const m = s.match(/^(\d{4})\/(\d{2})\/(\d{2})[\sT]+(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
         if (m) {
             // ISO文字列に変換してパース（ローカルタイムとして扱う）
-            return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+            return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}`);
         }
-        // それ以外はそのままDateに渡す
-        return new Date(s);
+        // それ以外: スラッシュ→ダッシュ・空白→T に正規化してSafariでもパースできるようにする
+        return new Date(s.replace(/\//g, '-').replace(' ', 'T'));
     }
 
     function _getInvalidReason(item) {
