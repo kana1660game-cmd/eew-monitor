@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https: http://localhost:18880 wss: data: blob:; img-src 'self' https: data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https: http://localhost:18890 wss: data: blob:; img-src 'self' https: data: blob:;">
     <title>EEW Monitor JS ver.3.3 [閲覧モード]</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
@@ -324,9 +324,16 @@
             font-size: 0.85em; font-weight: bold; background: #ffeeba; color: #d39e00; border: 1px solid #ffdf7e;
         }
         .ipf-badge {
-            display: inline-block; margin-left: 10px; padding: 2px 6px; border-radius: 4px; 
+            display: inline-block; margin-left: 10px; padding: 2px 6px; border-radius: 4px;
             font-size: 0.85em; font-weight: bold; background: #d4edda; color: #155724; border: 1px solid #c3e6cb;
         }
+        /* 警報／予報バッジ */
+        .alert-kind-badge {
+            display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.85em; font-weight: bold; vertical-align: middle; white-space: nowrap;
+        }
+        .alert-kind-badge.warn     { background: #f8d7da; color: #842029; border: 1px solid #f1aeb5; }
+        .alert-kind-badge.forecast { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c; }
 
         .filter-row { display: flex; align-items: center; margin-bottom: 12px; font-size: 0.9em; flex-wrap: wrap; }
         .filter-label { font-weight: bold; width: 130px; flex-shrink: 0; }
@@ -750,6 +757,20 @@
             #update-time { display: none !important; }
             .container { padding-bottom: 30px !important; }
         }
+        /* ── EEW グループ表示（io版のみ） ── */
+        .eew-group-summary { cursor: pointer; }
+        .eew-group-summary:hover { background: #e8f0ff !important; }
+        .eew-group-child { display: none; }
+        .eew-group-child.eew-child-visible { display: table-row; background: #f8faff; }
+        .eew-group-child.eew-child-visible:hover { background: #eef3ff !important; }
+        .eew-toggle-btn {
+            display: inline-block; font-size: 0.8em; color: #555;
+            transition: transform 0.2s; user-select: none; -webkit-user-select: none;
+        }
+        /* 長押し時のテキスト選択を防ぐ */
+        #history-body tr, #eq-history-body tr {
+            user-select: none; -webkit-user-select: none;
+        }
     /* ── 同期ログパネル ── */
     #g-log-panel {
         display: none;
@@ -835,15 +856,13 @@
             <table>
                 <thead>
                     <tr>
-                        <th class="eew-h-sp-serial">報</th>
-                        <th class="eew-h-time"><span class="sp-full">発生日時</span><span class="sp-short">発生</span></th>
-                        <th class="eew-h-rep">報数</th>
-                        <th class="eew-h-region"><span class="sp-full">震源地</span><span class="sp-short">震源地</span></th>
-                        <th class="sp-badge-col" style="width: 80px;"><span class="sp-full">予想震度</span><span class="sp-short">震度</span></th>
-                        <th class="eew-h-lpgm" style="width: 60px;">階級</th>
-                        <th class="sp-badge-col" style="width: 50px;">M</th>
-                        <th class="sp-badge-col" style="width: 70px;">深さ</th>
-                        <th class="eew-h-del">操作</th>
+                        <th style="width:22px;padding:6px 2px;"></th>
+                        <th style="width:24px;padding:6px 2px;text-align:center;">報</th>
+                        <th class="eew-h-time">発生</th>
+                        <th class="eew-h-region">震源地</th>
+                        <th class="sp-badge-col" style="width:80px;">震度</th>
+                        <th class="sp-badge-col" style="width:50px;">M</th>
+                        <th class="sp-badge-col" style="width:70px;">深さ</th>
                     </tr>
                 </thead>
                 <tbody id="history-body"></tbody>
@@ -1203,7 +1222,7 @@
                         <th class="sp-badge-col" style="width: 50px;">M</th>
                         <th class="sp-badge-col" style="width: 70px;">深さ</th>
                         <th style="width: 60px;" class="eq-h-lpgm">階級</th>
-                        <th style="width: 44px; text-align:center;" class="eq-h-act" title="操作 (右クリック+Shift+A でコード表示)">操作</th>
+                        <th style="width: 44px; text-align:center;" class="eq-h-act">操作</th>
                     </tr>
                 </thead>
                 <tbody id="eq-history-body"></tbody>
@@ -1776,8 +1795,37 @@
     // ────────────────────────────────────────────────────────────
 
     let historyData = [];
-    function saveHistoryToGist() {} // no-op: github.io 版は書き込み不要
-    function saveHistoryToGist() {} // no-op: 同期は localhost:18880 経由（main.js の SyncServer）
+    function saveHistoryToGist() {} // no-op: github.io 版 / localhost:18890 経由
+
+    // ── EEW グループ展開状態管理（io版） ──────────────────────────
+    const _eewExpanded     = new Set();  // 現在展開中のID
+    const _eewManualClosed = new Set();  // ユーザーが手動で閉じたID（自動展開しない）
+    const _eewAutoTimers   = new Map();  // id → 30分タイマー
+
+    function toggleEewGroup(id) {
+        if (_eewExpanded.has(id)) {
+            _eewExpanded.delete(id);
+            _eewManualClosed.add(id);
+            if (_eewAutoTimers.has(id)) { clearTimeout(_eewAutoTimers.get(id)); _eewAutoTimers.delete(id); }
+        } else {
+            _eewExpanded.add(id);
+            _eewManualClosed.delete(id);
+        }
+        renderHistory();
+    }
+
+    function eewAutoExpand(id) {
+        if (_eewManualClosed.has(id)) return;
+        _eewExpanded.add(id);
+        if (_eewAutoTimers.has(id)) clearTimeout(_eewAutoTimers.get(id));
+        const timer = setTimeout(() => { _eewAutoTimers.delete(id); }, 30 * 60 * 1000);
+        _eewAutoTimers.set(id, timer);
+        renderHistory();
+        requestAnimationFrame(() => {
+            const el = document.querySelector(`[data-eew-group="${id}"]`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+    }
 
     // ── デュアルソース対応 重複管理 ──────────────────────────────
     // "EventID_Serial" の受信済みSet。
@@ -2179,7 +2227,7 @@
         initFilterDropdowns();
         renderHistory(); // 保存済み表示モードを起動時に確実に反映
 
-        // github.io 版: WebSocket 接続は行わない（localhost:18880 ポーリングで同期）
+        // github.io 版: WebSocket 接続は行わない（localhost:18890 ポーリングで同期）
 
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) e.target.style.display = 'none';
@@ -3267,7 +3315,7 @@ function _idbGetAllCursor(store) {
             const title = isCorrupt ? ` title="⚠ 壊れたデータ: ${corruptReason.replace(/"/g,"'")}"` : '';
 
             tr.innerHTML = `
-                <td${title}>${isCorrupt ? '⚠ ' : ''}<span class="sp-full">${timeStr}</span><span class="sp-short">${timeStrSp}</span></td>
+                <td${title}><span class="sp-full">${timeStr}</span><span class="sp-short">${timeStrSp}</span></td>
                 <td class="eq-h-type"><span style="font-size:0.85em;color:${isCorrupt?'#dc3545':'#555'};">${issueTypeStr}</span></td>
                 <td class="eq-h-region">${region}</td>
                 <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${intBg};">${maxInt}</span></td>
@@ -3276,24 +3324,13 @@ function _idbGetAllCursor(store) {
                 <td class="eq-h-lpgm"><span class="history-badge" style="background:${lpgmBg};font-size:0.82em;">${lpgmDisplay}</span></td>
                 <td class="eq-h-act">
                     <div class="eq-row-actions">
-                        <button class="eq-row-btn code" title="コード表示 (右クリック+Shift+A)">{}</button>
-                        <button class="eq-row-btn del"  title="削除">🗑</button>
+                        <button class="eq-row-btn del" title="削除">🗑</button>
                     </div>
                 </td>
             `;
 
-            const [codeBtn, delBtn] = tr.querySelectorAll('.eq-row-btn');
-            codeBtn.addEventListener('click', e => { e.stopPropagation(); showEqCode(item); });
-            delBtn.addEventListener('click',  async e => { e.stopPropagation(); await deleteEqItem(item); });
-
-            tr.addEventListener('contextmenu', e => {
-                if (!e.shiftKey) return;
-                e.preventDefault(); showEqCode(item);
-            });
-            tr.setAttribute('tabindex', '-1');
-            tr.addEventListener('keydown', e => {
-                if (e.shiftKey && e.key.toLowerCase() === 'a') { e.preventDefault(); showEqCode(item); }
-            });
+            const delBtn = tr.querySelector('.eq-row-btn.del');
+            delBtn.addEventListener('click', async e => { e.stopPropagation(); await deleteEqItem(item); });
 
             if (!isCorrupt && hypo.latitude && hypo.longitude) {
                 const points = item.points || [];
@@ -3846,11 +3883,15 @@ function _idbGetAllCursor(store) {
         // 報数バッジ（PC・SP共通）
         const reportBadge = `<span class="report-badge">${escapeHtml(data.ReportStr)}</span>`;
 
+        // 警報／予報バッジ（最大震度5弱以上=警報）
+        const isWarnKind = !!String(data.MaxInt).match(/[567]/);
+        const alertKindBadge = `<span class="alert-kind-badge ${isWarnKind ? 'warn' : 'forecast'}">${isWarnKind ? '警報' : '予報'}</span>`;
+
         if (data.IsCancel) {
             infoText.innerHTML = `<div class="info-flex"><div class="info-details"><span class="text-cancel">発表:${escapeHtml(data.AnnTime)}</span><br><span class="text-cancel">先ほどの速報は取り消されました &nbsp;${reportBadge}</span></div>${rightSideHTML}</div>`;
         } else {
             const dispTime = data.OriTime ? data.OriTime : data.AnnTime;
-            infoText.innerHTML = `<div class="info-flex"><div class="info-details"><span>発生時刻: ${escapeHtml(dispTime)}</span><span>震源: ${escapeHtml(data.Region)} &nbsp;${methodBadge}${reportBadge}</span></div>${rightSideHTML}</div>`;
+            infoText.innerHTML = `<div class="info-flex"><div class="info-details"><span>発生時刻: ${escapeHtml(dispTime)}</span><span>震源: ${escapeHtml(data.Region)} &nbsp;${methodBadge}${reportBadge}${alertKindBadge}</span></div>${rightSideHTML}</div>`;
         }
     }
 
@@ -3918,9 +3959,11 @@ function _idbGetAllCursor(store) {
         if (existingIndex !== -1) {
             iLog('info', `[applyData] 履歴 upsert（上書き） hash=${currentHash}`);
             historyData[existingIndex] = newEntry;
+            eewAutoExpand(data.ID);
         } else {
             iLog('info', `[applyData] 履歴 追加 hash=${currentHash} 合計=${historyData.length + 1}件`);
             historyData.push(newEntry);
+            eewAutoExpand(data.ID);
         }
         saveHistoryDebounced(); renderHistoryDebounced();
         broadcastEew(data);
@@ -3955,119 +3998,147 @@ function _idbGetAllCursor(store) {
         const _t0 = performance.now();
         const tbody = document.getElementById('history-body');
         if (!tbody) return;
-        const frag = document.createDocumentFragment();
 
-        // フィルター適用
+        // ページネーション非表示（グループ表示では使用しない）
+        const paginationEl = document.getElementById('eew-pagination');
+        if (paginationEl) paginationEl.style.display = 'none';
+
+        // フィルター・ソート
         let displayData = getFilteredEewData();
-
-        // ソート
         const order = (document.getElementById('eew-sort-order') || {}).value || 'new';
         displayData.sort((a, b) => {
-            if (order === "new") return b.SortKey.localeCompare(a.SortKey);
-            if (order === "old") return a.SortKey.localeCompare(b.SortKey);
-            if (order === "int-desc") return (EEW_INT_ORDER[b.MaxInt]||0) - (EEW_INT_ORDER[a.MaxInt]||0);
-            if (order === "int-asc") {
+            if (order === 'new') return b.SortKey.localeCompare(a.SortKey);
+            if (order === 'old') return a.SortKey.localeCompare(b.SortKey);
+            if (order === 'int-desc') return (EEW_INT_ORDER[b.MaxInt]||0) - (EEW_INT_ORDER[a.MaxInt]||0);
+            if (order === 'int-asc') {
                 const va = EEW_INT_ORDER[a.MaxInt]||0, vb = EEW_INT_ORDER[b.MaxInt]||0;
                 if (va===0) return 1; if (vb===0) return -1; return va-vb;
             }
-            if (order === "mag-desc") {
-                const ma = parseFloat(a.Mag)||0, mb = parseFloat(b.Mag)||0;
-                return mb - ma;
-            }
-            if (order === "mag-asc") {
-                const ma = parseFloat(a.Mag)||999, mb = parseFloat(b.Mag)||999;
-                return ma - mb;
-            }
+            if (order === 'mag-desc') return (parseFloat(b.Mag)||0) - (parseFloat(a.Mag)||0);
+            if (order === 'mag-asc')  return (parseFloat(a.Mag)||999) - (parseFloat(b.Mag)||999);
             return 0;
         });
 
         // 件数表示
         const countEl = document.getElementById('eew-loaded-count');
-        if (countEl) {
-            if (displayData.length === historyData.length) countEl.textContent = `${historyData.length}件`;
-            else countEl.textContent = `${displayData.length}件 / ${historyData.length}件`;
-        }
+        if (countEl) countEl.textContent = displayData.length === historyData.length
+            ? `${historyData.length}件` : `${displayData.length}件 / ${historyData.length}件`;
 
-        // ページネーション
-        const paginationEl = document.getElementById('eew-pagination');
-        if (eewDisplayMode === 'paginate') {
-            const totalPages = Math.ceil(displayData.length / eewItemsPerPage) || 1;
-            if (currentEewPage < 1) currentEewPage = 1;
-            if (currentEewPage > totalPages) currentEewPage = totalPages;
-            const start = (currentEewPage - 1) * eewItemsPerPage;
-            displayData = displayData.slice(start, start + eewItemsPerPage);
+        // ID でグループ化
+        const groupMap = new Map();
+        displayData.forEach(item => {
+            if (!groupMap.has(item.ID)) groupMap.set(item.ID, []);
+            groupMap.get(item.ID).push(item);
+        });
 
-            const numContainer = document.getElementById('eew-page-numbers');
-            numContainer.innerHTML = '';
-            for (let i = 1; i <= totalPages; i++) {
-                const btn = document.createElement('button');
-                btn.className = `btn page-btn ${i === currentEewPage ? 'active' : ''}`;
-                btn.innerText = i;
-                btn.onclick = () => changeEewPage(i);
-                numContainer.appendChild(btn);
-            }
-            if (paginationEl) paginationEl.style.display = 'flex';
-        } else {
-            if (paginationEl) paginationEl.style.display = 'none';
-        }
+        // グループを最新報のSortKey順に並べ替え
+        const groupKeys = Array.from(groupMap.keys()).sort((a, b) => {
+            const aKey = groupMap.get(a).reduce((best, it) => it.SortKey > best ? it.SortKey : best, '');
+            const bKey = groupMap.get(b).reduce((best, it) => it.SortKey > best ? it.SortKey : best, '');
+            return (order === 'old') ? aKey.localeCompare(bKey) : bKey.localeCompare(aKey);
+        });
 
-        displayData.forEach((item) => {
-            const tr = document.createElement('tr');
-            let intBg = getIntensityColor(item.MaxInt), mBg = getMagColor(item.Mag), dBg = getDepthColor(item.Depth), lpgmBg = getLpgmColor(item.LpgmInt);
-            if (item.Mag === "-" || item.Mag === "不明" || isNaN(parseFloat(item.Mag))) mBg = "#cccccc";
-            if (item.Depth === "-" || item.Depth === "不明") dBg = "#cccccc";
-            let lpgmText = (item.LpgmInt && item.LpgmInt !== "-" && item.LpgmInt !== "0") ? `階級${item.LpgmInt}` : "-";
-            if (lpgmText === "-") lpgmBg = "#cccccc";
-            let intText = item.MaxInt;
-            const depthVal = parseInt((item.Depth || "").replace("km", ""));
-            if (!isNaN(depthVal) && depthVal > 150) { intBg = "#cccccc"; intText = "未発表"; }
+        const frag = document.createDocumentFragment();
 
-            const displayTime = item.OriTime || getTimeFromID(item.ID);
-            // SP版: 月/日 時:分 のみ
+        groupKeys.forEach(id => {
+            const items = groupMap.get(id);
+            const isExpanded = _eewExpanded.has(id);
+
+            // 最新報（Serial最大）
+            const sorted = [...items].sort((a, b) => parseInt(b.Serial||0) - parseInt(a.Serial||0));
+            const latest = sorted[0];
+
+            let intBg  = getIntensityColor(latest.MaxInt);
+            let intText = latest.MaxInt;
+            const depthVal = parseInt((latest.Depth || '').replace('km', ''));
+            if (!isNaN(depthVal) && depthVal > 150) { intBg = '#cccccc'; intText = '未発表'; }
+            const mBg = getMagColor(latest.Mag);
+            const dBg = getDepthColor(latest.Depth);
+
+            const displayTime = latest.OriTime || getTimeFromID(latest.ID);
             let displayTimeSp = displayTime;
             try {
                 const m2 = displayTime.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
                 if (m2) displayTimeSp = `${m2[2]}/${m2[3]} ${m2[4]}:${m2[5]}`;
             } catch(_) {}
-            const spSerialText = item.IsCancel ? '消' : (item.IsFinal ? '終' : String(parseInt(item.Serial) || 1));
-            tr.innerHTML = `
-                <td class="eew-h-sp-serial">${escapeHtml(spSerialText)}</td>
-                <td class="eew-h-time"><span class="sp-full">${escapeHtml(displayTime)}</span><span class="sp-short">${escapeHtml(displayTimeSp)}</span></td>
-                <td class="eew-h-rep">${escapeHtml(item.ReportStr)}</td>
-                <td class="eew-h-region">${escapeHtml(item.Region)}</td>
-                <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${intBg};">${escapeHtml(intText)}</span></td>
-                <td class="eew-h-lpgm"><span class="history-badge" style="background:${lpgmBg};">${escapeHtml(lpgmText)}</span></td>
-                <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${mBg};">${escapeHtml(item.Mag)}</span></td>
-                <td class="sp-badge-col"><span class="history-badge sp-vbadge sp-depth-badge" style="background:${dBg};">${escapeHtml(item.Depth)}</span></td>
-                <td class="eew-h-del"><button class="btn btn-danger" style="padding:2px 8px; font-size:0.8em;">削除</button></td>
-            `;
-            tr.querySelector('.eew-h-del button').addEventListener('click', () => deleteRow(item.ID, item.ReportStr));
 
-            addLongPressEvent(tr, () => {
-                showMap(item.Latitude, item.Longitude, item.Region, item.WarnArea, false, {
-                    time:         displayTime,
-                    region:       item.Region,
-                    maxInt:       intText,
-                    mag:          item.Mag,
-                    depth:        item.Depth,
-                    lpgmInt:      lpgmText,
-                    reportNum:    item.ReportStr,
-                    isFinal:      item.IsFinal,
-                    isCancel:     item.IsCancel,
-                    isSea:        item.IsSea,
-                    isAssumption: item.IsAssumption,
-                    accEpi:       item.AccEpicenter,
-                    accDep:       item.AccDepth,
-                    rawWolfx:     _rawDataCacheWolfx[item.ID + '_' + (item.Serial || '0')] || null,
-                    rawP2p:       _rawDataCacheP2p  [item.ID + '_' + (item.Serial || '0')] || null
+            // ── サマリー行 ──
+            const sumTr = document.createElement('tr');
+            sumTr.className = 'eew-group-summary';
+            sumTr.dataset.eewGroup = id;
+            sumTr.innerHTML = `
+                <td style="text-align:center;padding:6px 2px;width:22px;">
+                    <span class="eew-toggle-btn" style="transform:${isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'};">▼</span>
+                </td>
+                <td style="text-align:center;padding:6px 2px;font-size:0.85em;color:#555;">${items.length}</td>
+                <td class="eew-h-time">${escapeHtml(displayTimeSp)}</td>
+                <td class="eew-h-region">${escapeHtml(latest.Region)}</td>
+                <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${intBg};">${escapeHtml(intText)}</span></td>
+                <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${mBg};">${escapeHtml(latest.Mag)}</span></td>
+                <td class="sp-badge-col"><span class="history-badge sp-vbadge sp-depth-badge" style="background:${dBg};">${escapeHtml(latest.Depth)}</span></td>
+            `;
+            sumTr.addEventListener('click', () => toggleEewGroup(id));
+            frag.appendChild(sumTr);
+
+            // ── 子行（新しい報が上、前の報ほど下） ──
+            sorted.forEach(item => {
+                const childTr = document.createElement('tr');
+                childTr.className = 'eew-group-child' + (isExpanded ? ' eew-child-visible' : '');
+                childTr.dataset.eewGroupChild = id;
+
+                let cIntBg  = getIntensityColor(item.MaxInt);
+                let cIntText = item.MaxInt;
+                const cDepthVal = parseInt((item.Depth || '').replace('km', ''));
+                if (!isNaN(cDepthVal) && cDepthVal > 150) { cIntBg = '#cccccc'; cIntText = '未発表'; }
+                const cMBg = getMagColor(item.Mag);
+                const cDBg = getDepthColor(item.Depth);
+
+                const cTime = item.OriTime || getTimeFromID(item.ID);
+                let cTimeSp = '';
+                try {
+                    const m2 = cTime.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+                    if (m2) cTimeSp = `${m2[4]}:${m2[5]}`;
+                } catch(_) {}
+
+                const serialLabel = item.IsCancel ? '消' : (item.IsFinal ? '終' : String(parseInt(item.Serial) || 1));
+
+                childTr.innerHTML = `
+                    <td></td>
+                    <td style="text-align:center;padding:6px 2px;font-size:0.88em;font-weight:bold;color:#444;">${escapeHtml(serialLabel)}</td>
+                    <td class="eew-h-time" style="font-size:0.85em;color:#666;">${escapeHtml(cTimeSp)}</td>
+                    <td class="eew-h-region" style="font-size:0.88em;">${escapeHtml(item.Region)}</td>
+                    <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${cIntBg};font-size:0.85em;">${escapeHtml(cIntText)}</span></td>
+                    <td class="sp-badge-col"><span class="history-badge sp-vbadge" style="background:${cMBg};font-size:0.85em;">${escapeHtml(item.Mag)}</span></td>
+                    <td class="sp-badge-col"><span class="history-badge sp-vbadge sp-depth-badge" style="background:${cDBg};font-size:0.85em;">${escapeHtml(item.Depth)}</span></td>
+                `;
+
+                addLongPressEvent(childTr, () => {
+                    showMap(item.Latitude, item.Longitude, item.Region, item.WarnArea, false, {
+                        time:         cTime,
+                        region:       item.Region,
+                        maxInt:       cIntText,
+                        mag:          item.Mag,
+                        depth:        item.Depth,
+                        lpgmInt:      item.LpgmInt || '-',
+                        reportNum:    item.ReportStr,
+                        isFinal:      item.IsFinal,
+                        isCancel:     item.IsCancel,
+                        isSea:        item.IsSea,
+                        isAssumption: item.IsAssumption,
+                        accEpi:       item.AccEpicenter,
+                        accDep:       item.AccDepth,
+                        rawWolfx:     _rawDataCacheWolfx[item.ID + '_' + (item.Serial || '0')] || null,
+                        rawP2p:       _rawDataCacheP2p  [item.ID + '_' + (item.Serial || '0')] || null
+                    });
                 });
+                frag.appendChild(childTr);
             });
-            frag.appendChild(tr);
         });
+
         tbody.innerHTML = '';
         tbody.appendChild(frag);
         const _ms = (performance.now() - _t0).toFixed(1);
-        if (_ms > 30) _dbg('perf', `[renderHistory] ${_ms}ms / ${displayData.length}件描画`);
+        if (_ms > 30) _dbg('perf', `[renderHistory] ${_ms}ms`);
     }
 
     async function showMap(lat, lon, regionName, areaData, isEqHistory = false, detailData = null, lgmPointData = []) {
@@ -5795,17 +5866,23 @@ function submitDebug() {
 
 <!-- ════════════════════════════════════════════
      🔗 Electron同期（定期ポーリング + SSE イベント push）
-     同PC: http://localhost:18880（自動）
+     同PC: http://localhost:18890（自動）
      LAN端末: localStorage の electronServerIP で設定したIPへ HTTPS 接続
 ════════════════════════════════════════════ -->
 <script>
 (function () {
     'use strict';
 
-    // IPが設定されていれば https://{ip}:18880、なければ同PC用 localhost にフォールバック
+    // 接続先の決定
+    //  ① ElectronがLANに配信しているUIを直接開いた場合（https://192.168.x.x:18890/ など）
+    //     → 同一オリジンを使う。証明書を一度承認すれば配下のfetchも通る（推奨）
+    //  ② github.io から開いた場合 → 設定IP or localhost（同一PCでのみ動作）
     function getBaseUrl() {
+        if (location.hostname !== 'kana1660game-cmd.github.io') {
+            return location.origin; // 例: https://192.168.0.78:18890（同一オリジン）
+        }
         const ip = localStorage.getItem('electronServerIP') || '';
-        return ip ? `https://${ip.trim()}:18880` : 'http://localhost:18880';
+        return ip ? `https://${ip.trim()}:18890` : 'http://localhost:18890';
     }
 
     function getHistoryUrl() { return getBaseUrl() + '/history'; }
@@ -5850,6 +5927,9 @@ function submitDebug() {
                     renderHistory();
                 }
             }
+
+            // 同期後、速報履歴の最新（一番上）をElectron版と同じ形式で上部に表示
+            if (historyData.length > 0) syncDisplayWithLatestHistory();
 
             // ── 地震情報履歴マージ ──────────────────────────────────
             if (Array.isArray(data.eq) && data.eq.length > 0) {
@@ -5913,7 +5993,7 @@ function submitDebug() {
             同じPCで使う場合は空欄のままでOKです。
         </p>
         <ol style="font-size:0.85em; color:#555; margin:0 0 12px 0; padding-left:1.4em; line-height:1.8;">
-            <li>ElectronアプリのPCで <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px;">https://&lt;IP&gt;:18880</code> にスマホでアクセス</li>
+            <li>ElectronアプリのPCで <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px;">https://&lt;IP&gt;:18890</code> にスマホでアクセス</li>
             <li>「接続がプライベートではありません」警告 → <strong>「詳細設定」→「続行」</strong></li>
             <li>「✓ 証明書の信頼が完了しました」と表示されたら下のIPを入力</li>
         </ol>
@@ -5921,7 +6001,7 @@ function submitDebug() {
             <div style="display:flex; gap:6px; margin-top:4px;">
                 <input type="text" id="electron-ip-input" placeholder="例: 192.168.1.10"
                     style="flex:1; padding:7px; border:1px solid #ccc; border-radius:4px; font-size:1em; font-family:monospace;">
-                <span style="line-height:36px; color:#666; font-size:0.85em;">:18880</span>
+                <span style="line-height:36px; color:#666; font-size:0.85em;">:18890</span>
             </div>
         </label>
         <div id="electron-ip-status" style="font-size:0.82em; color:#28a745; min-height:1.2em; margin-bottom:10px;"></div>
@@ -5940,7 +6020,7 @@ function submitDebug() {
         const saved = localStorage.getItem(LS_KEY) || '';
         document.getElementById('electron-ip-input').value = saved;
         document.getElementById('electron-ip-status').textContent =
-            saved ? `現在の設定: ${saved}:18880` : '現在: 同PC (localhost) モード';
+            saved ? `現在の設定: ${saved}:18890` : '現在: 同PC (localhost) モード';
         document.getElementById('electron-ip-modal').style.display = 'flex';
     };
 
@@ -5955,7 +6035,7 @@ function submitDebug() {
         else localStorage.removeItem(LS_KEY);
         document.getElementById('electron-ip-status').style.color = '#28a745';
         document.getElementById('electron-ip-status').textContent = ip
-            ? `✓ 保存しました: ${ip}:18880 — 同期を開始します`
+            ? `✓ 保存しました: ${ip}:18890 — 同期を開始します`
             : '✓ クリアしました（localhost モード）';
         setTimeout(() => {
             document.getElementById('electron-ip-modal').style.display = 'none';
