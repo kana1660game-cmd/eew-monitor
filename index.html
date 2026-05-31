@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https: http://localhost:18890 wss: data: blob:; img-src 'self' https: data: blob:;">
-    <title>EEW Monitor JS ver.3.3 [閲覧モード]</title>
+    <title>EEW Monitor JS ver.3.4 [閲覧モード]</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
@@ -24,6 +24,26 @@
             background-color: #f5f7fa;
             color: #333;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* 長押し・タップ時の青色テキスト選択／コールアウトを防止（iOS Safari等） */
+        table, .table-scroll, .box-title, .btn, .page-btn,
+        .history-badge, .sp-vbadge, .eew-group-summary, .eew-group-child,
+        .eew-toggle-btn, .leaflet-container, #info-text {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        /* 入力欄・生データ表示などはテキスト選択を許可（コピー用途） */
+        input, textarea, select, [contenteditable="true"],
+        #raw-data-pre, .mc-val, .mc-label {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
         }
         
         .container { 
@@ -807,7 +827,7 @@
 </div>
 
 <div style="position:fixed;top:6px;left:8px;z-index:9998;display:flex;align-items:center;gap:7px;pointer-events:none;user-select:none;">
-    <span style="background:rgba(0,0,0,0.52);color:#fff;font-size:11px;padding:2px 9px;border-radius:4px;font-family:monospace;letter-spacing:0.4px;">ver.3.3</span>
+    <span style="background:rgba(0,0,0,0.52);color:#fff;font-size:11px;padding:2px 9px;border-radius:4px;font-family:monospace;letter-spacing:0.4px;">ver.3.4</span>
 </div>
 
 
@@ -825,7 +845,6 @@
             <span id="sync-status" style="font-size:0.82em;padding:2px 9px;border-radius:4px;background:#6c757d;color:#fff;margin-left:auto;white-space:nowrap;">同期待機中</span>
             <span id="update-time" style="color:#666; font-size:0.82em; font-weight:normal; white-space:nowrap; margin-left:8px;">最終同期: --:--:--</span>
             <button id="g-log-btn" onclick="toggleGLog()" style="font-size:0.78em;padding:1px 7px;background:#1e293b;color:#aab;border:1px solid #334;border-radius:3px;cursor:pointer;white-space:nowrap;margin-left:4px;">📋 ログ</button>
-            <button onclick="openElectronIPModal()" title="Electron接続設定" style="font-size:0.78em;padding:1px 7px;background:#495057;color:#fff;border:1px solid #6c757d;border-radius:3px;cursor:pointer;white-space:nowrap;margin-left:4px;">⚙ 接続</button>
         </div>
         <div id="info-text">閲覧モード（Electronアプリと同期中...）</div>
     </div>
@@ -866,9 +885,9 @@
 
         <!-- ページネーション行（ページ形式時のみ表示） -->
         <div id="eew-pagination" style="display:none; justify-content:center; align-items:center; gap:5px; margin-bottom:8px; flex-wrap:wrap; flex-shrink:0;">
-            <button class="btn page-btn" onclick="changeEewPage(currentEewPage - 1)">◀</button>
-            <div id="eew-page-numbers" style="display:flex; gap:4px; overflow-x:auto; max-width:55vw; padding:2px;"></div>
-            <button class="btn page-btn" onclick="changeEewPage(currentEewPage + 1)">▶</button>
+            <button class="btn page-btn" style="flex-shrink:0;" onclick="changeEewPage(currentEewPage - 1)">◀</button>
+            <div id="eew-page-numbers" style="display:flex; gap:4px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x; max-width:70vw; padding:2px;"></div>
+            <button class="btn page-btn" style="flex-shrink:0;" onclick="changeEewPage(currentEewPage + 1)">▶</button>
         </div>
 
         <div class="controls ctrl-row1" style="justify-content: flex-start; flex-wrap: wrap; gap: 6px;">
@@ -881,7 +900,6 @@
             </select>
 
             <!-- ── EEW速報操作 ── -->
-            <button class="btn btn-danger" onclick="clearHistory()">クリア</button>
             <input type="file" id="import-file" style="display:none;" accept=".json" onchange="importHistory(this)">
             <button class="btn" style="background:#17a2b8;" onclick="document.getElementById('import-file').click()">読込</button>
             <button class="btn" style="background:#17a2b8;" onclick="exportHistory()">保存</button>
@@ -1174,8 +1192,9 @@
 </div>
 
 <div id="eq-history-modal" class="modal-overlay">
-    <div class="large-modal-content">
-        <div id="eq-hdr-pc" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; gap: 10px;">
+    <div class="large-modal-content" style="position:relative;">
+        <button onclick="closeEqHistoryModal()" title="閉じる" style="position:absolute; top:6px; right:8px; z-index:30; width:30px; height:30px; line-height:1; border:none; border-radius:50%; background:#dc3545; color:#fff; font-size:1.05em; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,0.3);">✕</button>
+        <div id="eq-hdr-pc" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; gap: 10px; padding-right: 38px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <h3 style="margin:0; color:#28a745;">確定した地震情報</h3>
                 <select id="eq-display-mode" onchange="changeEqDisplayMode()" style="padding: 4px; font-size: 0.9em;">
@@ -1201,8 +1220,6 @@
             <div style="display:flex; gap:8px; align-items: center;">
                 <span id="eq-loaded-count" style="font-size: 0.9em; font-weight: bold; margin-right: 5px; color: #333;">読込済: 0件</span>
                 <button class="btn" style="background: #28a745;" onclick="updateEqHistoryLatest()">最新に更新</button>
-                <button class="btn" style="background:#dc3545;" onclick="openEqDeleteModal()">🗑 削除</button>
-                <button class="btn btn-danger" onclick="closeEqHistoryModal()">閉じる</button>
             </div>
         </div>
         
@@ -1225,9 +1242,9 @@
         </div>
 
         <div id="eq-pagination" style="display:none; justify-content:center; align-items:center; gap:5px; margin-bottom:10px; flex-wrap:wrap; flex-shrink: 0;">
-            <button class="btn page-btn" onclick="changeEqPage(currentEqPage - 1)">◀</button>
-            <div id="eq-page-numbers" style="display:flex; gap:5px; overflow-x:auto; max-width: 60%; padding: 2px;"></div>
-            <button class="btn page-btn" onclick="changeEqPage(currentEqPage + 1)">▶</button>
+            <button class="btn page-btn" style="flex-shrink:0;" onclick="changeEqPage(currentEqPage - 1)">◀</button>
+            <div id="eq-page-numbers" style="display:flex; gap:5px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x; max-width: 70vw; padding: 2px;"></div>
+            <button class="btn page-btn" style="flex-shrink:0;" onclick="changeEqPage(currentEqPage + 1)">▶</button>
         </div>
 
         <div style="flex-shrink: 0; border-top: 1px solid #e1e4e8; padding-top: 10px;">
@@ -1545,7 +1562,10 @@
 
 <div id="detail-modal" class="modal-overlay">
     <div class="modal-content" style="width:340px; max-width:96vw;">
-        <h3 style="margin-top:0; color:#0078D7; border-bottom:2px solid #0078D7; padding-bottom:5px;">詳細情報</h3>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0078D7; padding-bottom:5px; margin-bottom:8px; gap:8px;">
+            <h3 style="margin:0; color:#0078D7;">詳細情報</h3>
+            <button id="det-raw-btn" class="btn" style="background:#343a40; font-family:monospace; font-weight:bold; font-size:0.8em; padding:4px 9px; white-space:nowrap; display:none;" onclick="openRawDataModal()">{ } 生コード</button>
+        </div>
         <table style="width:100%; border:none; font-size:0.93em;">
             <tr><td style="border:none;padding:5px 0;color:#555;white-space:nowrap;width:120px;">発生日時</td><td id="det-time" style="border:none;padding:5px 0;font-weight:bold;word-break:break-all;"></td></tr>
             <tr><td style="border:none;padding:5px 0;color:#555;">震源地</td><td id="det-region" style="border:none;padding:5px 0;font-weight:bold;"></td></tr>
@@ -1561,8 +1581,7 @@
             <tr><td style="border:none;padding:5px 0;color:#555;">震央の精度</td><td id="det-acc-epi" style="border:none;padding:5px 0;font-weight:bold;"></td></tr>
             <tr><td style="border:none;padding:5px 0;color:#555;">深さの精度</td><td id="det-acc-dep" style="border:none;padding:5px 0;font-weight:bold;"></td></tr>
         </table>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
-            <button id="det-raw-btn" class="btn" style="background:#6c757d; font-family:monospace; font-weight:bold; font-size:1em; display:none;" onclick="openRawDataModal()">{}</button>
+        <div style="display:flex; justify-content:flex-end; align-items:center; margin-top:12px;">
             <button class="btn btn-danger" onclick="closeDetailModal()">閉じる</button>
         </div>
     </div>
@@ -3133,7 +3152,10 @@ function _idbGetAllCursor(store) {
     /** p2pquake API から過去データを取得（offsetをBATCH固定で進め、末尾到達まで継続） */
     async function _loadMoreFromP2P(maxCount, deadline) {
         const BATCH = 100;
-        let fetched = 0, offset = 0;
+        // 2回目以降は既読分をスキップし、未取得の古いデータからoffsetを再開する。
+        // （offset=0固定だと既読の重複ばかりで「新規なし上限」に達し、2回目以降に過去データを取得できない）
+        // BATCH分だけ手前から始めて、壊れデータのスキップによるズレを吸収する。
+        let fetched = 0, offset = Math.max(0, eqHistoryData.length - BATCH);
         let consecutiveNoNew = 0;
         const MAX_CONSECUTIVE_NO_NEW = 3;
         let loopCount = 0;
@@ -3374,7 +3396,8 @@ function _idbGetAllCursor(store) {
                         isSea:        undefined,
                         isAssumption: undefined,
                         accEpi:       undefined,
-                        accDep:       undefined
+                        accDep:       undefined,
+                        rawP2p:       item
                     }, lgmPoints);
                 });
             }
@@ -3391,6 +3414,12 @@ function _idbGetAllCursor(store) {
 
     async function openEqHistoryModal() {
         document.getElementById('eq-history-modal').style.display = 'flex';
+        // いちばん最初に開いたときのみ、情報種類の既定を「各地の震度情報」のみに設定する
+        if (!localStorage.getItem('eew_eq_first_open_done')) {
+            eqFilterSettings.issueTypes = ['各地の震度情報'];
+            localStorage.setItem('eew_eq_filter', JSON.stringify(eqFilterSettings));
+            localStorage.setItem('eew_eq_first_open_done', '1');
+        }
         renderEqHistory(); // まずローカルデータを表示
         showProcessing(true);
         setProcessingMessage('最新の地震情報を取得中... (0件)');
@@ -4020,10 +4049,6 @@ function _idbGetAllCursor(store) {
         const tbody = document.getElementById('history-body');
         if (!tbody) return;
 
-        // ページネーション非表示（グループ表示では使用しない）
-        const paginationEl = document.getElementById('eew-pagination');
-        if (paginationEl) paginationEl.style.display = 'none';
-
         // フィルター・ソート
         let displayData = getFilteredEewData();
         const order = (document.getElementById('eew-sort-order') || {}).value || 'new';
@@ -4059,9 +4084,35 @@ function _idbGetAllCursor(store) {
             return (order === 'old') ? aKey.localeCompare(bKey) : bKey.localeCompare(aKey);
         });
 
+        // ── 表示件数（ページ分割）── グループ（地震イベント）単位でページングする
+        const paginationEl = document.getElementById('eew-pagination');
+        let pageKeys = groupKeys;
+        if (eewDisplayMode === 'paginate') {
+            const totalPages = Math.ceil(groupKeys.length / eewItemsPerPage) || 1;
+            if (currentEewPage < 1) currentEewPage = 1;
+            if (currentEewPage > totalPages) currentEewPage = totalPages;
+            const start = (currentEewPage - 1) * eewItemsPerPage;
+            pageKeys = groupKeys.slice(start, start + eewItemsPerPage);
+
+            const pageNumContainer = document.getElementById('eew-page-numbers');
+            if (pageNumContainer) {
+                pageNumContainer.innerHTML = '';
+                for (let i = 1; i <= totalPages; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = `btn page-btn ${i === currentEewPage ? 'active' : ''}`;
+                    btn.innerText = i;
+                    btn.onclick = () => changeEewPage(i);
+                    pageNumContainer.appendChild(btn);
+                }
+            }
+            if (paginationEl) paginationEl.style.display = 'flex';
+        } else {
+            if (paginationEl) paginationEl.style.display = 'none';
+        }
+
         const frag = document.createDocumentFragment();
 
-        groupKeys.forEach(id => {
+        pageKeys.forEach(id => {
             const items = groupMap.get(id);
             const isExpanded = _eewExpanded.has(id);
 
@@ -4313,13 +4364,29 @@ function _idbGetAllCursor(store) {
                         options: { position: 'topright' },
                         onAdd: function () {
                             const div = L.DomUtil.create('div');
-                            div.style.background = 'white'; div.style.padding = '10px'; div.style.borderRadius = '8px'; div.style.maxHeight = '350px'; div.style.overflowY = 'auto'; div.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
-                            let html = '<h4 style="margin:0 0 10px 0; border-bottom:2px solid #0078D7; font-size:14px;">地域別予想震度</h4>';
+                            div.style.background = 'white'; div.style.borderRadius = '8px'; div.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)'; div.style.overflow = 'hidden'; div.style.maxWidth = '200px';
+                            let listHtml = '';
                             parsedWarnAreas.forEach(item => {
                                 const color = getIntensityColor(item.shindoStr);
-                                html += `<div style="display:flex; align-items:center; margin-bottom:5px;"><span style="width:35px; height:24px; background:${color}; display:flex; justify-content:center; align-items:center; border-radius:3px; margin-right:8px; font-weight:bold; border:1px solid #333;">${item.shindoStr}</span><span style="font-size:13px;">${item.regionName}</span></div>`;
+                                listHtml += `<div style="display:flex; align-items:center; margin-bottom:5px;"><span style="width:35px; height:24px; background:${color}; display:flex; justify-content:center; align-items:center; border-radius:3px; margin-right:8px; font-weight:bold; border:1px solid #333;">${item.shindoStr}</span><span style="font-size:13px;">${item.regionName}</span></div>`;
                             });
-                            div.innerHTML = html; L.DomEvent.disableClickPropagation(div); return div;
+                            div.innerHTML = `
+                                <div class="warn-ctrl-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; padding:8px 10px; border-bottom:2px solid #0078D7; user-select:none;">
+                                    <span style="font-size:14px; font-weight:bold;">地域別予想震度</span>
+                                    <span class="warn-ctrl-tri" style="font-size:11px; transition:transform 0.2s; transform:rotate(0deg);">▼</span>
+                                </div>
+                                <div class="warn-ctrl-body" style="padding:8px 10px; max-height:300px; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;">${listHtml}</div>`;
+                            const header = div.querySelector('.warn-ctrl-header');
+                            const body   = div.querySelector('.warn-ctrl-body');
+                            const tri    = div.querySelector('.warn-ctrl-tri');
+                            header.addEventListener('click', () => {
+                                const collapsed = body.style.display === 'none';
+                                body.style.display = collapsed ? 'block' : 'none';
+                                tri.style.transform = collapsed ? 'rotate(0deg)' : 'rotate(-90deg)';
+                            });
+                            L.DomEvent.disableClickPropagation(div);
+                            L.DomEvent.disableScrollPropagation(div);
+                            return div;
                         }
                     });
                     eewMap.warnControl = new WarnControl(); eewMap.addControl(eewMap.warnControl);
@@ -5765,13 +5832,11 @@ function submitDebug() {
         spHdr.id = 'eq-hdr-sp';
         spHdr.style.cssText = 'flex-shrink:0;margin-bottom:8px;';
         spHdr.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;padding-right:38px;">
                 <h3 style="margin:0;color:#28a745;font-size:1em;">地震情報</h3>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <span id="eq-loaded-count-sp" style="font-size:0.82em;color:#555;"></span>
                     <button class="btn" style="background:#28a745;padding:7px 11px;font-size:0.85em;" onclick="updateEqHistoryLatest()">更新</button>
-                    <button class="btn" style="background:#dc3545;padding:7px 11px;font-size:0.85em;" onclick="openEqDeleteModal()">🗑 削除</button>
-                    <button class="btn btn-danger" style="padding:7px 11px;font-size:0.85em;" onclick="closeEqHistoryModal()">✕ 閉じる</button>
                 </div>
             </div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
